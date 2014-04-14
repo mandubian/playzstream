@@ -287,12 +287,12 @@ object WSZ {
           if (!doneOrError) {
             process = process match { 
               case Process.Await(_, recv, fb, err) => recv(bodyPart.getBodyPartBytes())
-              case _ => process then Process.emit(bodyPart.getBodyPartBytes())
+              case _ => process append Process.emit(bodyPart.getBodyPartBytes())
             }
 
             STATE.CONTINUE
           } else {
-            process = Process.Halt
+            process = Process.halt
             // Must close underlying connection, otherwise async http client will drain the stream
             bodyPart.markUnderlyingConnectionAsClosed()
             STATE.ABORT
@@ -300,7 +300,7 @@ object WSZ {
         }
 
         override def onCompleted() = {
-          Option(process then Process.Halt).map(processP.success(_))
+          Option(process append Process.halt).map(processP.success(_))
         }
 
         override def onThrowable(t: Throwable) = {
@@ -328,9 +328,9 @@ object WSZ {
           curL: List[Promise[Array[Byte]]]
         ): Process[Future, Array[Byte]] = {
           curL match {
-            case List(last) => curP then Process.await(last.future)(step)
+            case List(last) => curP append Process.await(last.future)(step)
             case List() => sys.error("impossible case")
-            case h :: t => fold(curP then Process.await(h.future)(Process.emit), t)
+            case h :: t => fold(curP append Process.await(h.future)(Process.emit), t)
           }
         }
         fold(Process.emit(a), prevs.reverse.tail)

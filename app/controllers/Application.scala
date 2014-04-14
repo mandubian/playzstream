@@ -44,7 +44,7 @@ object Application extends Controller {
   def sample1 = Action {
     val process = Process.emitAll(Seq(1, 2, 3, 4)).map(_.toString)
 
-    Ok.stream(enumerator(process))
+    Ok.feed(enumerator(process))
   }
 
   /***********************************************************************
@@ -56,7 +56,7 @@ object Application extends Controller {
   val numerals = Process.unfold(0){ s => val x = s+1; Some(x, x) }.repeat
 
   def sample2 = Action {
-    Ok.stream(enumerator(numerals.map(_.toString).intersperse(",").take(40)))
+    Ok.feed(enumerator(numerals.map(_.toString).intersperse(",").take(40)))
   }
 
   /***********************************************************************
@@ -71,7 +71,7 @@ object Application extends Controller {
   )(Process.emit).repeat
 
   def sample3 = Action {
-    Ok.stream(enumerator(
+    Ok.feed(enumerator(
       // creates a Tee outputting only numerals but consuming ticker to have 
       // the delayed effect
       (numerals tee ticker(0, 100))(processes.zipWith((a,b) => a))
@@ -95,7 +95,7 @@ object Application extends Controller {
     */
   def delayedNumerals(delay: Long) = {
     def step(i: Int): Process[Task, Int] = {
-      Process.emit(i).then(
+      Process.emit(i) append (
         Process.await(scalaFuture2scalazTask(delayedNumber(i+1, delay)))(step)
       )
     }
@@ -103,7 +103,7 @@ object Application extends Controller {
   }
 
   def sample4 = Action {
-    Ok.stream(enumerator(delayedNumerals(100).take(20).map(_.toString).intersperse(",")))
+    Ok.feed(enumerator(delayedNumerals(100).take(20).map(_.toString).intersperse(",")))
   }
 
   /***********************************************************************
@@ -120,11 +120,12 @@ object Application extends Controller {
         .get(rh => iterateeFirstEmit(reader))
         .flatMap(_.run)
 
-    Ok.stream(enumerator(
+    Ok.feed(enumerator(
       // wraps the received String in a Process
       // re-splits it to remove ","
       // emits all chunks
-      Process.wrap(scalaFuture2scalazTask(maybeValues))
+     
+     Process.eval(scalaFuture2scalazTask(maybeValues))
         .flatMap{ values => Process.emitAll(values.split(",")) }
     ))
   }
@@ -145,7 +146,7 @@ object Application extends Controller {
           // string == splitter
           // emit rest
           // loop
-          Process.emit(rest).then( Process.await1[String].flatMap(go("")) )
+          Process.emit(rest) append ( Process.await1[String].flatMap(go("")) )
         case 1 => 
           // splitter not found in string 
           // so waiting for next string
@@ -158,8 +159,8 @@ object Application extends Controller {
           // emit all splitted elements but last
           // loops with rest = splitted last element
           Process.emit(rest + splitted.head)
-                 .then( Process.emitAll(splitted.tail.init) )
-                 .then( Process.await1[String].flatMap(go(splitted.last)) )
+                 .append( Process.emitAll(splitted.tail.init) )
+                 .append( Process.await1[String].flatMap(go(splitted.last)) )
       })
     }
     // await1 simply means "await an input string and emits it"
@@ -169,7 +170,7 @@ object Application extends Controller {
   def sample6 = Action { implicit request =>
     val p = WSZ.url(routes.Application.sample4().absoluteURL()).getRealTime.translate(Task2FutureNT)
 
-    Ok.stream(enumerator(p.map(new String(_)) |> splitFold(",")))
+    Ok.feed(enumerator(p.map(new String(_)) |> splitFold(",")))
   }
 
   /***********************************************************************
@@ -205,6 +206,6 @@ object Application extends Controller {
       }
       else Process.emit(0).map(_.toString)
 
-    Ok.stream(enumerator(outputProcess))
+    Ok.feed(enumerator(outputProcess))
   }
 }
