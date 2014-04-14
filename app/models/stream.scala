@@ -47,16 +47,16 @@ package object `stream` {
                 }.recoverWith{
                   case Process.End => step(fb, curIt) // Normal termination
                   case e: Exception => err match {
-                    case Process.Halt => throw e // ensure exception is eventually thrown;
+                    case Process.Halt(_) => throw e // ensure exception is eventually thrown;
                                          // without this we'd infinite loop
-                    case _ => step(err ++ Process.wrap(Task.delay(throw e)), curIt)
+                    case _ => step(err ++ Process.eval(Task.delay(throw e)), curIt)
                   }
                 }
 
               case Process.Emit(h, t) =>
                 enumerateSeq(h, Cont(k)).flatMap{ i => step(t, i) }
 
-              case Process.Halt =>
+              case Process.Halt(_) =>
                 Future.successful(k(Input.EOF))
             }
 
@@ -83,7 +83,7 @@ package object `stream` {
 
         case Process.Emit(h, t) => Done(h.head, i)
 
-        case Process.Halt => Error("Halt before emit", i)
+        case Process.Halt(_) => Error("Halt before emit", i)
       }
     }
     Cont(step[I](p))
